@@ -120,6 +120,78 @@ static uint32_t rank_state(const state_t *state)
     return p * ORIENTATIONS + o;
 }
 
+#define PATTERN_STATES 68040
+
+static uint32_t pattern_rank(const state_t *state)
+{
+    uint8_t position[4];
+
+    for (uint8_t i = 0; i < CUBIES; ++i) {
+        if (state->p[i] < 4)
+            position[state->p[i]] = i;
+    }
+
+    uint8_t selected[4];
+    uint8_t selected_count = 0;
+
+    for (uint8_t i = 0; i < CUBIES; ++i) {
+        if (state->p[i] < 4)
+            selected[selected_count++] = i;
+    }
+
+    uint32_t combination_rank = 0;
+
+    for (int a = 0; a < 7; ++a) {
+        for (int b = a + 1; b < 7; ++b) {
+            for (int c = b + 1; c < 7; ++c) {
+                for (int d = c + 1; d < 7; ++d) {
+                    if (a == selected[0] &&
+                        b == selected[1] &&
+                        c == selected[2] &&
+                        d == selected[3])
+                        goto combination_found;
+
+                    ++combination_rank;
+                }
+            }
+        }
+    }
+
+combination_found:
+
+    uint8_t order[4];
+    uint8_t count = 0;
+
+    for (uint8_t i = 0; i < CUBIES; ++i) {
+        if (state->p[i] < 4)
+            order[count++] = state->p[i];
+    }
+
+    uint32_t perm_rank = 0;
+
+    for (uint8_t i = 0; i < 4; ++i) {
+        uint8_t smaller = 0;
+
+        for (uint8_t j = (uint8_t)(i + 1U); j < 4; ++j) {
+            if (order[j] < order[i])
+                ++smaller;
+        }
+
+        perm_rank = perm_rank * (4 - i) + smaller;
+    }
+
+    uint32_t orientation_rank = 0;
+
+    for (uint8_t i = 0; i < 4; ++i) {
+        orientation_rank =
+            orientation_rank * 3U + state->o[selected[i]];
+    }
+
+    uint32_t placement_rank = combination_rank * 24U + perm_rank;
+
+    return placement_rank * 81U + orientation_rank;
+}
+
 /*@ requires \valid(state); requires rank < STATES; assigns *state; */
 static void unrank_state(uint32_t rank, state_t *state)
 {
