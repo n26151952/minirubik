@@ -124,13 +124,6 @@ static uint32_t rank_state(const state_t *state)
 
 static uint32_t pattern_rank(const state_t *state)
 {
-    uint8_t position[4];
-
-    for (uint8_t i = 0; i < CUBIES; ++i) {
-        if (state->p[i] < 4)
-            position[state->p[i]] = i;
-    }
-
     uint8_t selected[4];
     uint8_t selected_count = 0;
 
@@ -157,7 +150,7 @@ static uint32_t pattern_rank(const state_t *state)
         }
     }
 
-combination_found:
+combination_found: ;
 
     uint8_t order[4];
     uint8_t count = 0;
@@ -190,6 +183,122 @@ combination_found:
     uint32_t placement_rank = combination_rank * 24U + perm_rank;
 
     return placement_rank * 81U + orientation_rank;
+}
+
+static void pattern_unrank(uint32_t rank, state_t *state)
+{
+    uint32_t orientation_rank = rank % 81U;
+    uint32_t placement_rank = rank / 81U;
+
+    uint32_t perm_rank = placement_rank % 24U;
+    uint32_t combination_rank = placement_rank / 24U;
+
+    for (uint8_t i = 0; i < CUBIES; ++i) {
+        state->p[i] = 4;
+        state->o[i] = 0;
+    }
+
+    uint8_t selected[4] = {0};
+    uint32_t current_rank = 0;
+    uint8_t found = 0;
+
+    for (uint8_t a = 0; a < 7 && !found; ++a) {
+        for (uint8_t b = (uint8_t)(a + 1U); b < 7 && !found; ++b) {
+            for (uint8_t c = (uint8_t)(b + 1U); c < 7 && !found; ++c) {
+                for (uint8_t d = (uint8_t)(c + 1U); d < 7; ++d) {
+
+                    if (current_rank == combination_rank) {
+                        selected[0] = a;
+                        selected[1] = b;
+                        selected[2] = c;
+                        selected[3] = d;
+                        found = 1;
+                        break;
+                    }
+
+                    ++current_rank;
+                }
+            }
+        }
+    }
+
+    uint8_t order[4];
+
+    uint8_t d0 = (uint8_t)(perm_rank / 6U);
+    perm_rank %= 6U;
+
+    uint8_t d1 = (uint8_t)(perm_rank / 2U);
+    perm_rank %= 2U;
+
+    uint8_t d2 = (uint8_t)perm_rank;
+
+    uint8_t digits[4] = {d0, d1, d2, 0};
+    uint8_t available[4] = {0, 1, 2, 3};
+
+    for (uint8_t i = 0; i < 4; ++i) {
+        uint8_t index = digits[i];
+
+        order[i] = available[index];
+
+        for (uint8_t j = index; j < 3U; ++j)
+            available[j] = available[j + 1U];
+    }
+
+
+    for (uint8_t i = 0; i < 4; ++i)
+        state->p[selected[i]] = order[i];
+
+    for (int i = 3; i >= 0; --i) {
+        state->o[selected[i]] =
+            (uint8_t)(orientation_rank % 3U);
+
+        orientation_rank /= 3U;
+    }
+}
+
+static uint8_t pdb[PATTERN_STATES];
+
+static void build_pdb(void)
+{
+    memset(pdb, 0xFF, sizeof pdb);
+
+    uint32_t queue[PATTERN_STATES];
+    uint32_t head = 0;
+    uint32_t tail = 0;
+
+    state_t solved = {
+        {0, 1, 2, 3, 4, 5, 6},
+        {0}
+    };
+
+    uint32_t start = pattern_rank(&solved);
+    pdb[start] = 0;
+    queue[tail++] = start;
+
+    while (head < tail) {
+        uint32_t rank = queue[head++];
+        uint8_t distance = pdb[rank];
+
+        state_t state;
+        pattern_unrank(rank, &state);
+
+        for (uint8_t move = 0; move < MOVES; ++move) {
+            state_t next = apply_move(state, move);
+            uint32_t next_rank = pattern_rank(&next);
+
+            if (pdb[next_rank] == 0xFF) {
+                pdb[next_rank] = (uint8_t)(distance + 1U);
+                queue[tail++] = next_rank;
+            }
+        }
+    }
+
+    for (uint32_t i = 0; i < PATTERN_STATES; ++i) {
+        if (pdb[i] == 0xFF) {
+            fprintf(stderr, "PDB incomplete at %u\n", i);
+            exit(EXIT_FAILURE);
+        }
+    }
 }
 
 /*@ requires \valid(state); requires rank < STATES; assigns *state; */
@@ -374,6 +483,7 @@ static int self_test(void)
 {
     const state_t solved = {{0, 1, 2, 3, 4, 5, 6}, {0}};
     state_t state;
+
     for (uint8_t move = 0; move < MOVES; ++move) {
         state = solved;
         state = apply_move(state, move);
@@ -381,16 +491,96 @@ static int self_test(void)
         if (memcmp(&solved, &state, sizeof solved))
             return 0;
     }
+
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         unrank_state(rank, &state);
+
         if (!valid(&state) || rank_state(&state) != rank)
             return 0;
     }
+
+    uint32_t pattern = pattern_rank(&solved);
+
+    if (pattern != 0 || pattern >= PATTERN_STATES)
+        return 0;
+
+    for (uint32_t rank = 0; rank < PATTERN_STATES; ++rank) {
+        pattern_unrank(rank, &state);
+
+        if (pattern_rank(&state) != rank)
+            return 0;
+    }
+
+    for (uint8_t move = 0; move < MOVES; ++move) {
+        state = apply_move(solved, move);
+        pattern = pattern_rank(&state);
+
+        if (pattern >= PATTERN_STATES)
+            return 0;
+    }
+
     return 1;
 }
 
-int main(int argc, char **argv)
+static void write_pdb_header(void)
 {
+    FILE *fp = fopen("pdb_data.h", "w");
+
+    if (fp == NULL) {
+        perror("fopen");
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(fp, "#ifndef PDB_DATA_H\n");
+    fprintf(fp, "#define PDB_DATA_H\n\n");
+
+    fprintf(fp, "#include <stdint.h>\n\n");
+
+    fprintf(fp, "static const uint8_t pdb_data[PATTERN_STATES] = {\n");
+
+    for (uint32_t i = 0; i < PATTERN_STATES; ++i) {
+        if (i % 16U == 0)
+            fprintf(fp, "    ");
+
+        fprintf(fp, "%u", pdb[i]);
+
+        if (i + 1U != PATTERN_STATES)
+            fprintf(fp, ", ");
+
+        if (i % 16U == 15U)
+            fprintf(fp, "\n");
+    }
+
+    if (PATTERN_STATES % 16U != 0)
+        fprintf(fp, "\n");
+
+    fprintf(fp, "};\n\n");
+    fprintf(fp, "#endif\n");
+
+    fclose(fp);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc > 1 && !strcmp(argv[1], "--build-pdb")) {
+        build_pdb();
+
+        uint8_t max_distance = 0;
+        for (uint32_t i = 0; i < PATTERN_STATES; ++i) {
+            if (pdb[i] > max_distance)
+                max_distance = pdb[i];
+        }
+
+        write_pdb_header();
+
+        printf("PDB built: %u states, max distance %u\n",
+               PATTERN_STATES, max_distance);
+
+        printf("PDB written to pdb_data.h\n");
+
+        return 0; 
+    }
+
     state_t state;
     uint8_t diameter;
     if (argc == 2 && !strcmp(argv[1], "--self-test")) {
