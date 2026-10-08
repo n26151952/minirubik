@@ -35,7 +35,7 @@ typedef struct {
 static const char *const move_names[MOVES] = {"R",  "R2", "R'", "B", "B2",
                                               "B'", "D",  "D2", "D'"};
 static const uint8_t inverse_move[MOVES] = {2, 1, 0, 5, 4, 3, 8, 7, 6};
-/* Each destination takes a cubie from source[face][destination]. */
+
 static const uint8_t source[3][CUBIES] = {
     {1, 4, 2, 0, 3, 5, 6},
     {0, 1, 2, 4, 5, 6, 3},
@@ -47,31 +47,29 @@ static const uint8_t twist[3][CUBIES] = {
     {0, 0, 0, 0, 0, 0, 0},
 };
 
-/*【RV32I 優化】每列是一個完整 HTM 轉動，搜尋時不再拆成多次 quarter-turn。*/
 static const uint8_t move_source[MOVES][CUBIES] = {
-    {1, 4, 2, 0, 3, 5, 6}, /* R */
-    {4, 3, 2, 1, 0, 5, 6}, /* R2 */
-    {3, 0, 2, 4, 1, 5, 6}, /* R' */
-    {0, 1, 2, 4, 5, 6, 3}, /* B */
-    {0, 1, 2, 5, 6, 3, 4}, /* B2 */
-    {0, 1, 2, 6, 3, 4, 5}, /* B' */
-    {0, 2, 5, 3, 1, 4, 6}, /* D */
-    {0, 5, 4, 3, 2, 1, 6}, /* D2 */
-    {0, 4, 1, 3, 5, 2, 6}, /* D' */
+    {1, 4, 2, 0, 3, 5, 6},
+    {4, 3, 2, 1, 0, 5, 6},
+    {3, 0, 2, 4, 1, 5, 6},
+    {0, 1, 2, 4, 5, 6, 3},
+    {0, 1, 2, 5, 6, 3, 4},
+    {0, 1, 2, 6, 3, 4, 5},
+    {0, 2, 5, 3, 1, 4, 6},
+    {0, 5, 4, 3, 2, 1, 6},
+    {0, 4, 1, 3, 5, 2, 6},
 };
 static const uint8_t move_twist[MOVES][CUBIES] = {
-    {1, 2, 0, 2, 1, 0, 0}, /* R */
-    {0, 0, 0, 0, 0, 0, 0}, /* R2 */
-    {1, 2, 0, 2, 1, 0, 0}, /* R' */
-    {0, 0, 0, 1, 2, 1, 2}, /* B */
-    {0, 0, 0, 0, 0, 0, 0}, /* B2 */
-    {0, 0, 0, 1, 2, 1, 2}, /* B' */
-    {0, 0, 0, 0, 0, 0, 0}, /* D */
-    {0, 0, 0, 0, 0, 0, 0}, /* D2 */
-    {0, 0, 0, 0, 0, 0, 0}, /* D' */
+    {1, 2, 0, 2, 1, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0},
+    {1, 2, 0, 2, 1, 0, 0},
+    {0, 0, 0, 1, 2, 1, 2},
+    {0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 1, 2, 1, 2},
+    {0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0},
 };
 
-/*【RV32I 優化】位置、排列、朝向分開查小表，取代每個節點的長排名計算。*/
 static const uint8_t comb_rank_by_mask[128] = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0,
     255, 255, 255, 255, 255, 255, 255, 1, 255, 255, 255, 4, 255, 10, 20, 255,
@@ -82,7 +80,7 @@ static const uint8_t comb_rank_by_mask[128] = {
     255, 255, 255, 9, 255, 15, 25, 255, 255, 18, 28, 255, 32, 255, 255, 255,
     255, 19, 29, 255, 33, 255, 255, 255, 34, 255, 255, 255, 255, 255, 255, 255
 };
-/* 修改：此表鍵值由 pattern_rank 先掃描到的角塊放在高位，不能反向打包。 */
+
 static const uint8_t perm_rank_by_key[4096] = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -340,8 +338,8 @@ static const uint8_t perm_rank_by_key[4096] = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-};
-/* 修改：方向鍵也採掃描順序高位優先，對應四位三進位方向排名。 */
+}
+
 static const uint8_t orientation_rank_by_key[256] = {
     0, 1, 2, 0, 3, 4, 5, 0, 6, 7, 8, 0, 0, 0, 0, 0,
     9, 10, 11, 0, 12, 13, 14, 0, 15, 16, 17, 0, 0, 0, 0, 0,
@@ -360,12 +358,11 @@ static const uint8_t orientation_rank_by_key[256] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
-/*【修改】C 版本改讀取 pdb_data.h 的 4-bit 壓縮距離表：每個 byte 存兩個狀態，省下 34,020 bytes 靜態資料；這個寫法會多做少量位移/遮罩，手寫 RV32I assembly 維持原本版本不受影響。 */
 static uint8_t pdb_distance_at(uint32_t rank)
 {
-    uint8_t packed = pdb_data[rank >> 1]; /*【修改】rank 除以 2，找到同一 byte 裡的兩筆距離。 */
-    uint32_t shift = (rank & 1U) << 2;   /*【修改】偶數 rank 取低 4 bit；奇數 rank 取高 4 bit。 */
-    return (uint8_t)((packed >> shift) & 0x0fU); /*【修改】取出 0 到 8 的 PDB 距離。 */
+    uint8_t packed = pdb_data[rank >> 1];
+    uint32_t shift = (rank & 1U) << 2;
+    return (uint8_t)((packed >> shift) & 0x0fU);
 }
 
 /* The three quarter-turns preserve the fixed front-upper-left corner. */
@@ -404,25 +401,15 @@ static void quarter_turn_to(const state_t *state, uint8_t face,
 }
 
 
-/*【修改區段：quarter_turn_to / apply_face_turn_to】
- * quarter_turn_to 直接從 state 讀資料、把結果寫到 result。這樣呼叫端
- * 不必把整個 14-byte 狀態當參數傳入、再從函式取回一份狀態；對 RV32I
- * 這種暫存器數量有限的處理器，能減少不必要的複製與搬移。
- * apply_face_turn_to 的輸入和輸出必須是不同的記憶體區域，因為旋轉時
- * 會一邊讀舊狀態、一邊寫新狀態；若兩者重疊，前面寫入的值可能覆蓋
- * 後續還要讀取的舊值。
- */
-/* 簡化原始碼：固定角塊索引在預處理時展開，不會新增目標端迴圈或分支。 */
 #define FOR_EACH_CUBIE(M) \
     M(0); M(1); M(2); M(3); M(4); M(5); M(6)
 
 static void apply_move_to(const state_t *state, uint8_t move,
                           state_t *result)
 {
-    /* 修改：先取出本次移動的兩列，使固定目的位置可用常數索引。 */
     const uint8_t *source_row = move_source[move];
     const uint8_t *twist_row = move_twist[move];
-    /* 修改：固定 7 個角塊明確展開，省下熱迴圈的計數與回跳成本。 */
+
 #define APPLY_CORNER(i) do { \
         uint8_t from = source_row[i]; \
         const uint8_t *source_permutation = &state->p[from]; \
@@ -439,7 +426,7 @@ static void apply_move_to(const state_t *state, uint8_t move,
 static void apply_face_turn_to(const state_t *state, uint8_t face,
                                uint8_t turn, state_t *result)
 {
-    /* Existing order is R, R2, R', B, B2, B', D, D2, D'. */
+
     apply_move_to(state, (uint8_t)(face * 3U + turn), result);
 }
 
@@ -458,14 +445,6 @@ static state_t apply_move(state_t state, uint8_t move)
     apply_move_to(&state, move, &result);
     return result;
 }
-
-
-/*【修改區段：apply_move 與搜尋端的走法套用】
- * 搜尋迴圈本來就已經知道 face 和 turn，所以直接呼叫
- * apply_face_turn_to，不再先把兩者合成 move、再用減法迴圈拆開。
- * apply_move 留給測試與建表等只拿到 move 編號的程式路徑使用。
- */
-
 
 /*@ requires \valid_read(state);
     requires \forall integer i; 0 <= i < CUBIES ==>
@@ -516,7 +495,7 @@ static uint32_t rank_state(const state_t *state)
 
 static uint32_t pattern_rank(const state_t *state)
 {
-    /* 修改：七個狀態位置固定，展開掃描並用同一個角塊位址取排列與方向。 */
+
     uint8_t mask = 0, orientation_key = 0;
     uint16_t permutation_key = 0;
 #define TRACK_CUBIE(i) do { \
@@ -534,18 +513,6 @@ static uint32_t pattern_rank(const state_t *state)
                          perm_rank_by_key[permutation_key];
     return placement * 81U + orientation_rank_by_key[orientation_key];
 }
-
-
-/*【修改區段：pattern_rank】
- * 這裡要把「四個指定角塊所在的位置」、「它們的排列」和「朝向」合成
- * 唯一索引。舊寫法會逐一枚舉位置組合，最多檢查 35 組；現在利用組合數
- * 的字典序公式直接算出 combination_rank，choose2/3/4 是很小的常數表。
- * 前面的單次掃描同時收集位置、角塊編號和朝向，避免為同一狀態再掃一次。
- * 排列的較小元素數直接組成 Lehmer rank；後續的 24、81 和乘 3 都明確
- * 以位移和加法表示，不依賴 RV32I 沒有的乘法指令。
- * 此函式假設傳入的是合法完整狀態，因此一定剛好找到四個編號小於 4 的
- * 角塊；self_test 的 rank/unrank 迴圈用來檢查索引範圍與互逆性。
- */
 
 
 static void pattern_unrank(uint32_t rank, state_t *state)
@@ -638,7 +605,7 @@ static void pattern_unrank(uint32_t rank, state_t *state)
 }
 
 
-static int is_solved(const state_t *state) /*【修改】直接比對目標狀態*/
+static int is_solved(const state_t *state)
 {
     for (uint8_t i = 0; i < CUBIES; ++i) {
         if (state->p[i] != i || state->o[i] != 0)
@@ -648,25 +615,11 @@ static int is_solved(const state_t *state) /*【修改】直接比對目標狀�
 }
 
 
-/*【修改區段：is_solved】
- * 只要逐一確認七個角塊都回到自己的位置、朝向都為 0，就能判斷完成。
- * 不必為了檢查目標狀態而計算整個排列與朝向的 rank；搜尋每到一個節點
- * 都會做這項檢查，直接比較的工作量更小也更容易讀懂。
- */
-
-
 static uint8_t heuristic(const state_t *state)
 {
-    /*【RV32I 優化】直接以 rank 索引一 byte 距離，沒有奇偶判斷或位移解包。*/
-    return pdb_distance_at(pattern_rank(state)); /*【修改】使用 nibble accessor 讀取壓縮 PDB，搜尋邏輯與距離下界不變。 */
+
+    return pdb_distance_at(pattern_rank(state));
 }
-
-
-/*【修改區段：heuristic】
- * PDB 每個 byte 放兩筆距離：偶數 rank 在低 4 bit，奇數 rank 在高 4 bit。
- * rank 的最低位決定右移 0 或 4 位，再遮罩留下 4 bit。這樣不必為奇偶
- * rank 寫條件分支；讀取仍只使用 RV32I 支援的位移與 AND 操作。
- */
 
 
 static uint8_t solution_moves[11];
@@ -680,23 +633,16 @@ typedef struct {
     uint8_t next_face;
     uint8_t next_turn;
     uint8_t last_face;
-    uint8_t entered;   /*【修改】避免回到父節點時重做初始化檢查 */
-    uint8_t heuristic; /*【修改】快取此節點的 PDB 下界 */
+    uint8_t entered;
+    uint8_t heuristic;
 } search_frame_t;
-
-
-/*【修改區段：search_frame_t】
- * entered 表示這個搜尋節點是否已做過目標檢查與 heuristic 查表；
- * heuristic 保存查到的下界。回到父節點繼續試其他走法時，父節點不必
- * 重複做相同的狀態排名和 PDB 查詢。
- */
 
 
 static search_frame_t search_stack[IDA_MAX_DEPTH + 1];
 
 
 static int ida_search(const state_t *start, uint8_t bound,
-                      uint8_t start_heuristic) /*【修改】根狀態以指標傳入 */
+                      uint8_t start_heuristic)
 {
     uint8_t depth = 0;
 
@@ -706,14 +652,14 @@ static int ida_search(const state_t *start, uint8_t bound,
     search_stack[0].next_turn = 0;
     search_stack[0].last_face = MOVES;
     search_stack[0].entered = 1;
-    search_stack[0].heuristic = start_heuristic; /*【修改】沿用根節點已算好的下界 */
+    search_stack[0].heuristic = start_heuristic;
 
 
     while (1) {
         search_frame_t *frame = &search_stack[depth];
 
 
-        if (!frame->entered) { /*【修改】每個節點只在首次進入時檢查與查表 */
+        if (!frame->entered) {
             frame->entered = 1;
             if (is_solved(&frame->state))
                 return 1;
@@ -731,7 +677,7 @@ static int ida_search(const state_t *start, uint8_t bound,
         }
 
 
-        if (depth >= bound) { /*【修改】到達深度上限就回溯，不再推入子節點 */
+        if (depth >= bound) {
             if (depth == 0)
                 return 0;
 
@@ -787,15 +733,9 @@ static int ida_search(const state_t *start, uint8_t bound,
 }
 
 
-/*【修改區段：ida_search】
- * 每個 frame 第一次進入時才檢查是否解完、並查一次 heuristic；回到這個
- * frame 試下一個走法時，沿用快取結果。face/turn 已由搜尋迴圈產生，直接
- * 套用，不重新解碼 move。depth 到達 bound 就回溯，不再建立更深的子節點，
- * 因而不會寫到 search_stack[12] 或 solution_moves[11] 之外。
- */
 
 
-static int ida_solve(const state_t *start) /*【修改】根狀態以指標傳入*/
+static int ida_solve(const state_t *start) 
 {
     if (is_solved(start))
         return 0;
@@ -816,10 +756,7 @@ static int ida_solve(const state_t *start) /*【修改】根狀態以指標傳�
 
     return -1;
 }
-/*【修改區段：ida_solve】
- * root 以指標傳遞，避免每一輪 IDA* 都複製整個狀態。先檢查已解狀態，
- * 否則只計算一次初始 heuristic；提高 bound 時仍沿用同一個初始值。
- */
+
 #ifdef BUILD_PDB
 static uint8_t pdb[PATTERN_STATES];
 
@@ -1054,17 +991,6 @@ static int parse_state(const char *input, state_t *state)
 }
 
 
-/*【修改區段：parse_state】
- * 逐字讀入前先遇到 '\0' 就立刻判定輸入太短，避免越過 argv 字串結尾
- * 繼續讀記憶體。讀滿 14 個字元後仍檢查第 15 個字元必須是結尾，確保
- * 長度恰好正確，再由 valid() 確認排列與朝向不變量。
- */
-
-
-/* stdout is fully buffered off a terminal, so a write error surfaces at the
- * flush, not at the printf that queued the bytes. Every exit path that has
- * produced output goes through here.
- */
 static int output_failed(void)
 {
     return fflush(stdout) != 0 || ferror(stdout);
@@ -1126,7 +1052,7 @@ static int self_test(void)
 
 
 #ifdef BUILD_PDB
-static void write_pdb_header(void) /*【修改】輸出格式同步打包為 nibble*/
+static void write_pdb_header(void)
 {
     for (uint32_t i = 0; i < PATTERN_STATES; ++i) {
         if (pdb[i] > 15U) {
@@ -1152,9 +1078,9 @@ static void write_pdb_header(void) /*【修改】輸出格式同步打包為 nib
 
 
     for (uint32_t i = 0; i < PATTERN_STATES; i += 2U) {
-        uint8_t packed = (uint8_t)(pdb[i] & 0x0FU); /*【修改】偶數 rank 放低 4 bit */
+        uint8_t packed = (uint8_t)(pdb[i] & 0x0FU);
         if (i + 1U < PATTERN_STATES)
-            packed |= (uint8_t)((pdb[i + 1U] & 0x0FU) << 4); /*【修改】奇數 rank 放高 4 bit */
+            packed |= (uint8_t)((pdb[i + 1U] & 0x0FU) << 4);
 
 
         if ((i / 2U) % 16U == 0)
@@ -1183,12 +1109,6 @@ static void write_pdb_header(void) /*【修改】輸出格式同步打包為 nib
 
     fclose(fp);
 }
-/*【修改區段：write_pdb_header】
- * 產生器現在和 heuristic() 使用同一個格式：rank 偶數放低 nibble、奇數
- * 放高 nibble，每個 byte 存兩筆距離。輸出前先確認每筆距離不超過 15；
- * 超過時不能截斷成 4 bit，否則查表結果會被靜默破壞。這種打包也讓 PDB
- * 的唯讀資料量比每個狀態一個 byte 少一半。
- */
 #endif
 
 
@@ -1254,19 +1174,13 @@ int main(int argc, char *argv[])
 
 
     if (argc != 2 || !parse_state(argv[1], &state)) {
-        /* C99 5.1.2.2.1 lets argv[0] be null when argc is 0. */
         fprintf(stderr, "usage: %s PPPPPPPOOOOOOO\n",
                 argc > 0 && argv[0] ? argv[0] : "solver");
         return 2;
     }
 
 
-    int solution_depth = ida_solve(&state); /*【修改】傳位址，避免複製根狀態 */
-    /*【修改標記：main 呼叫 ida_solve】
-     * 傳入 state 的位址，與 ida_solve(const state_t *) 的介面一致，避免
-     * 在進入求解器時再複製一次 14-byte 狀態。
-     */
-
+    int solution_depth = ida_solve(&state);
 
     if (solution_depth < 0) {
         fputs("no solution found\n", stderr);
